@@ -20,7 +20,6 @@ class Patient():
     def assign_bed_in_zone(self, zone):
         self.zone = zone
     
-
 class Event():
     def __init__(self, type=None, patient=None, time=None):
         self.type = type
@@ -145,6 +144,10 @@ def main():
    def generate_specialist_time(patient):
       r = random()
       specialist_time = (math.log(1 - r)/(2.5)) * -1 * 60
+      r_test = random()
+      if r_test <= 0.2:
+         test_time = generate_test_time() 
+         specialist_time += test_time
       return specialist_time
 
    def generate_test_time():
@@ -203,6 +206,7 @@ def main():
             patient_interrupt(patient, workup_service_time, clock)
          else:
             status_workup_doctors += 1
+            patient.assign_bed_in_zone(zone)
             fel.append(DepartureWorkupEvent(patient = patient, time = clock + workup_service_time))                
 
       def patient_interrupt(patient: Patient, workup_service_time, clock):
@@ -283,14 +287,28 @@ def main():
           bed_queue_lists["3,4,5"].append(event.patient)
 
    def handle_workup_departure(event: DepartureWorkupEvent):
+      # Service patients who were interrupted or queued
       def service_waiting_patient(list, zone): 
+         nonlocal status_workup_doctors
          status_workup_doctors -= 1
          patient = list[zone].pop(0)
          status_workup_doctors += 1
          workup_service_time = generate_workup_service_time(patient=patient)
          fel.append(DepartureWorkupEvent(patient=patient, time = clock + workup_service_time))
          return
-      
+
+      def handle_specialist_event(patient):
+         nonlocal status_specialists
+         nonlocal number_specialist_queue
+         
+         if status_specialists == 2:
+             number_specialist_queue += 1
+             specialist_queue_list.append(patient)
+         else:
+             status_specialists += 1
+             specialist_service_time = generate_specialist_time(patient=patient)
+             fel.append(DepartureSpecialistEvent(patient = patient, time = clock + specialist_service_time)  )
+               
       if len(interrupt_lists["2"]) != 0:
          service_waiting_patient(interrupt_lists["2"])
       elif len(interrupt_lists["3,4,5"]) != 0:
@@ -301,7 +319,32 @@ def main():
             service_waiting_patient(workup_queue_lists["1"])
           elif len(workup_queue_lists["2"]) != 0:
               service_waiting_patient(workup_queue_lists["2"])
+          elif len(workup_queue_lists["3,4,5"]) != 0:
+              service_waiting_patient(workup_queue_lists["3,4,5"])
+      
+      if event.patient.triage_type in {3, 4, 5}:
+         r = random()
+         if r <= 0.3:
+            handle_specialist_event(event.patient)
+         else:
+             number_of_beds_per_zone[event.patient.zone] += 1
+      else:
+            handle_specialist_event(event.patient)
+             
+      return
 
+   def handle_specialist_departure(event: DepartureSpecialistEvent):
+      nonlocal status_specialists
+      nonlocal number_specialist_queue
+      nonlocal number_of_beds_per_zone
+      
+      status_specialists -= 1
+      if number_specialist_queue > 0:
+          number_specialist_queue -= 1
+          next_serviced_patient = specialist_queue_list.pop(0)
+          specialist_service_time = generate_specialist_time(next_serviced_patient)
+          fel.append(DepartureSpecialistEvent(patient = next_serviced_patient, time = clock + specialist_service_time))
+      number_of_beds_per_zone[event.patient.zone] += 1
       return
    
    while clock <= 10000:
@@ -309,13 +352,13 @@ def main():
       # REVIEW
       clock = event.time
       if event.type == 0:
-         handle_arrival_event(clock)
+          handle_arrival_event(clock)
       elif event.type == 1:
           handle_triage_departure(event)
       elif event.type == 2:
           handle_workup_departure(event)
       else:
-          print("dep3")
+          handle_specialist_departure(event)
       del fel[0]
       fel.sort(key=lambda x: x.time, reverse = False)
       print(fel)
