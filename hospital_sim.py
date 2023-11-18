@@ -73,9 +73,6 @@ class EndSimulationEvent(Event):
     def __init__(self, time=10000):
         super().__init__(type="End Simulation", time=time)
 
-def initialize_random_seed():
-    seed(42)
-
 def generate_interarrival_time():
       """
       Generates interarrival time using lambda value of 4.5 patients / hour, 
@@ -431,7 +428,7 @@ def main():
          global status_workup_doctors
          
          status_workup_doctors -= 1
-         patient = list[zone].pop(0)
+         patient = list.pop(0)
          status_workup_doctors += 1
          workup_service_time = generate_workup_service_time(patient=patient)
          fel.append(DepartureWorkupEvent(patient=patient, time = clock + workup_service_time))
@@ -536,7 +533,7 @@ def main():
        
        return
    
-   while clock <= 10000:
+   while clock <= 2000:
       event = fel.pop(0)
       prev_event_time = clock
       clock = event.time
@@ -600,6 +597,7 @@ def main():
            'Server Idle Rate': server_idle_rate}
 
 if __name__ == '__main__':
+   seed(42)
    statistics = main()
    for key,value in statistics.items():
        print(f'Statistic: {key}, Queues: {value}')
