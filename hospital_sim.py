@@ -276,6 +276,7 @@ def main():
          status_workup_doctors += 1
          patient.assign_bed_in_zone(zone)
          workup_service_time = generate_workup_service_time(patient)
+         print(f"3Patient: {patient.zone}")
          fel.append(DepartureWorkupEvent(patient=patient, time=clock + workup_service_time))   
       return
 
@@ -309,10 +310,16 @@ def main():
          workup_service_time = generate_workup_service_time(patient)
          if status_workup_doctors == max_num_servers["doctors"]:
             # If all doctors are busy, attempt to interrupt lower priority patient
-            patient_interrupt(patient, workup_service_time, clock)
+            isInterrupted = patient_interrupt(patient, workup_service_time, clock)
+            print(isInterrupted)
+            if isInterrupted:
+                status_workup_doctors += 1
+                patient.assign_bed_in_zone(zone)
+                fel.append(DepartureWorkupEvent(patient = patient, time = clock + workup_service_time))    
          else:
             status_workup_doctors += 1
             patient.assign_bed_in_zone(zone)
+            print(f"1Patient: {patient.zone}")
             fel.append(DepartureWorkupEvent(patient = patient, time = clock + workup_service_time))    
          return
 
@@ -327,20 +334,22 @@ def main():
          for index, event in enumerate(fel):
               # Only attempt to interrupt DepartureWorkupEvents (type 1)
               if event.type == 1 and event.patient.triage_type > patient.triage_type:
+                  print("zone of interrupt: " , event.patient.zone , "\n")
+                  print("triage type: ", event.patient.triage_type)
                   interrupted_patient = event.patient
                   if interrupted_patient.triage_type == 2:
                      interrupt_lists["2"].append(interrupted_patient)
                   else: 
                      interrupt_lists["3,4,5"].append(interrupted_patient)
                   event_to_interrupt = index
-                  fel.append(DepartureWorkupEvent(patient=patient, time = clock + workup_service_time))
+                  # fel.append(DepartureWorkupEvent(patient=patient, time = clock + workup_service_time))
                   break
          if event_to_interrupt:
             fel.pop(event_to_interrupt)
          else:
             # Can only be a type 1 or 2 patient that failed to interrupt
             workup_queue_lists[str(patient.triage_type)].append(patient)
-         return
+         return True if event_to_interrupt else False
       ###################################################################################################
 
       # Generate next arrival event
@@ -408,18 +417,20 @@ def main():
       
       status_triage_nurses -= 1
       if number_of_beds_per_zone[4] > 0:
+          print("bed in zone 4\n")
           assign_type_3_4_5_patient_to_zone(event.patient, 4)
       elif number_of_beds_per_zone[3] > 0:
+          print("zone 3\n")
           assign_type_3_4_5_patient_to_zone(event.patient, 3)
       else:
           number_waiting_for_bed_queue += 1
-          number_of_beds_per_zone["3,4,5"].append(event.patient)
-      
+          bed_queue_lists["3,4,5"].append(event.patient)
+   
       if len(triage_queue_list) != 0:
           patient = triage_queue_list.pop(0)
           number_triage_queue -= 1
           status_triage_nurses += 1
-          patient.assign_triage_type(triage_type = generate_walk_in_triage_type())
+          patient.assign_triage_type(triage_type=generate_walk_in_triage_type())
           triage_time = generate_triage_time(patient)  
           fel.append(DepartureTriageEvent(patient=patient, time=clock+triage_time))
 
@@ -446,9 +457,12 @@ def main():
          global status_workup_doctors
          
          status_workup_doctors -= 1
+         print("list: ", list)
          patient = list.pop(0)
+         print(patient)
          status_workup_doctors += 1
          workup_service_time = generate_workup_service_time(patient=patient)
+         print(f"2Patient: {patient.zone}")
          fel.append(DepartureWorkupEvent(patient=patient, time = clock + workup_service_time))
          return
 
@@ -472,17 +486,22 @@ def main():
       status_workup_doctors -= 1
       # Check for any interrupted patients and generature departure event if applicable
       if len(interrupt_lists["2"]) != 0:
+         print("here")
          service_waiting_patient(interrupt_lists["2"])
       elif len(interrupt_lists["3,4,5"]) != 0:
+         print("here2")
          service_waiting_patient(interrupt_lists["3,4,5"])  
 
       # If there is a doctor still idle, check for queued patient and generate departure event if applicable
       if status_workup_doctors < max_num_servers["doctors"]:
           if len(workup_queue_lists["1"]) != 0:
+            print("here3")
             service_waiting_patient(workup_queue_lists["1"])
           elif len(workup_queue_lists["2"]) != 0:
+              print("here4")
               service_waiting_patient(workup_queue_lists["2"])
           elif len(workup_queue_lists["3,4,5"]) != 0:
+              print("here5")
               service_waiting_patient(workup_queue_lists["3,4,5"])
       
       if event.patient.triage_type in {3, 4, 5}:
@@ -493,7 +512,9 @@ def main():
              # Patient does not need specialist assessment and can depart from ED
              # Free up one bed from the zone of the departing patient
              total_patients["out"] += 1
-             print(event)
+             print(event.patient)
+             print(event.patient.arrival_type)
+             print(event.patient.triage_type)
              number_of_beds_per_zone[event.patient.zone] += 1
       else:
             # Patients of type 1 and 2 automatically go to specialist 
