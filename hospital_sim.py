@@ -439,7 +439,7 @@ def main():
       """
       global status_workup_doctors
       ############################# WORKUP DEPARTURE EVENT HELPER METHODS ################################
-      def service_waiting_patient(list): 
+      def service_waiting_patient(list: list): 
          """
          Helper method used to generate a departure event for an interrupted or queued patient.
          """
@@ -474,7 +474,7 @@ def main():
       if len(interrupt_lists["2"]) != 0:
          service_waiting_patient(interrupt_lists["2"])
       elif len(interrupt_lists["3,4,5"]) != 0:
-         service_waiting_patient("3,4,5")  
+         service_waiting_patient(interrupt_lists["3,4,5"])  
 
       # If there is a doctor still idle, check for queued patient and generate departure event if applicable
       if status_workup_doctors < max_num_servers["doctors"]:
@@ -517,6 +517,7 @@ def main():
       status_specialists -= 1
       # Check to see if there is a patient in the specialist queue
       if number_specialist_queue > 0:
+          status_specialists += 1
           number_specialist_queue -= 1
           queued_patient = specialist_queue_list.pop(0)
           specialist_service_time = generate_specialist_time()
@@ -600,15 +601,15 @@ def main():
 
    # Divide by two for utilization, since two servers?
    server_utilization_rate = {
-       'Triage': (sum(server_uptime['Triage'])/(2 * clock)) * 100,
-       'Workup': (sum(server_uptime['Workup'])/(2 * clock)) * 100,
-       'Specialist': (sum(server_uptime['Specialist'])/(2 * clock)) * 100
+       'Triage': (sum(server_uptime['Triage'])/(max_num_servers['nurses'] * clock)) * 100,
+       'Workup': (sum(server_uptime['Workup'])/(max_num_servers['doctors'] * clock)) * 100,
+       'Specialist': (sum(server_uptime['Specialist'])/(max_num_servers['specialists'] * clock)) * 100
    }
 
    server_idle_rate = {
-       'Triage': (1 - (sum(server_uptime['Triage'])/(2 * clock))) * 100,
-       'Workup': (1 - (sum(server_uptime['Workup'])/(2 * clock))) * 100,
-       'Specialist': (1 - (sum(server_uptime['Specialist'])/(2 * clock))) * 100
+       'Triage': (1 - (sum(server_uptime['Triage'])/(max_num_servers['nurses'] * clock))) * 100,
+       'Workup': (1 - (sum(server_uptime['Workup'])/(max_num_servers['doctors'] * clock))) * 100,
+       'Specialist': (1 - (sum(server_uptime['Specialist'])/(max_num_servers['doctors'] * clock))) * 100
    }
    
    # Number of patients in and out
