@@ -424,7 +424,7 @@ def main():
       will be sent to a specialist assessment; otherwise, they will leave the ED system.
       """
       ############################# WORKUP DEPARTURE EVENT HELPER METHODS ################################
-      def service_waiting_patient(list, zone): 
+      def service_waiting_patient(list): 
          """
          Helper method used to generate a departure event for an interrupted or queued patient.
          """
@@ -449,7 +449,7 @@ def main():
              specialist_queue_list.append(patient)
          else:
              status_specialists += 1
-             specialist_service_time = generate_specialist_time(patient=patient)
+             specialist_service_time = generate_specialist_time()
              fel.append(DepartureSpecialistEvent(patient = patient, time = clock + specialist_service_time)  )
       ###################################################################################################
 
@@ -501,7 +501,7 @@ def main():
       if number_specialist_queue > 0:
           number_specialist_queue -= 1
           queued_patient = specialist_queue_list.pop(0)
-          specialist_service_time = generate_specialist_time(queued_patient)
+          specialist_service_time = generate_specialist_time()
           
           # Generate a departure event for the queued patient
           fel.append(DepartureSpecialistEvent(patient = queued_patient, time = clock + specialist_service_time))
@@ -592,11 +592,15 @@ def main():
    # Total time in system
    # Need to calculate server utilization
    
-   return time_weighted_average_queues, average_queue_time_per_customer, max_queue_lengths, total_server_uptime, server_utilization_rate, server_idle_rate
+   return {'Time Weighted Average Queues':time_weighted_average_queues, 
+           'Average Queue Time Per Customer': average_queue_time_per_customer, 
+           'Max Queue Lengths': max_queue_lengths,
+           'Total Server Uptime': total_server_uptime,
+           'Server Utilization Rate': server_utilization_rate,
+           'Server Idle Rate': server_idle_rate}
 
 if __name__ == '__main__':
    statistics = main()
-   print('Triage, Bed, Workup, Specialist')
-   for statistic in statistics:
-       print(f' : {statistic}')
+   for key,value in statistics.items():
+       print(f'Statistic: {key}, Queues: {value}')
    
