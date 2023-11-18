@@ -1,4 +1,6 @@
-﻿# msci-333-hospital-simulation
+﻿# MSCI 333 - SFGH Hospital Emergency Department Simulation
+
+## Contributors: Aniq Premji, Larissa Troper
 
  Clone the repository to your local machine with the following command: ```git clone https://github.com/aniqp/msci-333-hospital-simulation.git```.
 
