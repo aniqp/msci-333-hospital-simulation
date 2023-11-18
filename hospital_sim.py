@@ -311,7 +311,6 @@ def main():
          if status_workup_doctors == max_num_servers["doctors"]:
             # If all doctors are busy, attempt to interrupt lower priority patient
             isInterrupted = patient_interrupt(patient, workup_service_time, clock)
-            print(isInterrupted)
             if isInterrupted:
                 status_workup_doctors += 1
                 patient.assign_bed_in_zone(zone)
@@ -333,8 +332,8 @@ def main():
          event_to_interrupt = None
          for index, event in enumerate(fel):
               # Only attempt to interrupt DepartureWorkupEvents (type 1)
-              if event.type == 1 and event.patient.triage_type > patient.triage_type:
-                  print("zone of interrupt: " , event.patient.zone , "\n")
+              if event.type == 2 and event.patient.triage_type > patient.triage_type:
+                  print("zone of interrupt: " , event.patient.zone)
                   print("triage type: ", event.patient.triage_type)
                   interrupted_patient = event.patient
                   if interrupted_patient.triage_type == 2:
@@ -390,7 +389,7 @@ def main():
                  number_waiting_for_bed_queue += 1
                  bed_queue_lists["1"].append(patient)
 
-      else: # Walk-in patient arrives, patient goes to triage firs
+      else: # Walk-in patient arrives, patient goes to triage first
           patient = Patient(arrival_type=1)
           if status_triage_nurses == max_num_servers["nurses"]:
               number_triage_queue += 1
@@ -417,10 +416,14 @@ def main():
       
       status_triage_nurses -= 1
       if number_of_beds_per_zone[4] > 0:
+          print(event.patient)
+          print(event.patient.triage_type)
           print("bed in zone 4\n")
           assign_type_3_4_5_patient_to_zone(event.patient, 4)
       elif number_of_beds_per_zone[3] > 0:
           print("zone 3\n")
+          print(event.patient)
+          print(event.patient.triage_type)
           assign_type_3_4_5_patient_to_zone(event.patient, 3)
       else:
           number_waiting_for_bed_queue += 1
@@ -456,10 +459,7 @@ def main():
          """
          global status_workup_doctors
          
-         status_workup_doctors -= 1
-         print("list: ", list)
          patient = list.pop(0)
-         print(patient)
          status_workup_doctors += 1
          workup_service_time = generate_workup_service_time(patient=patient)
          print(f"2Patient: {patient.zone}")
