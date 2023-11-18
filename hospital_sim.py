@@ -312,7 +312,6 @@ def main():
             # If all doctors are busy, attempt to interrupt lower priority patient
             isInterrupted = patient_interrupt(patient, workup_service_time, clock)
             if isInterrupted:
-                status_workup_doctors += 1
                 patient.assign_bed_in_zone(zone)
                 fel.append(DepartureWorkupEvent(patient = patient, time = clock + workup_service_time))    
          else:
@@ -452,6 +451,7 @@ def main():
       will be sent to a specialist assessment; otherwise, they will leave the ED system.
       """
       global status_workup_doctors
+      global number_workup_queue
       ############################# WORKUP DEPARTURE EVENT HELPER METHODS ################################
       def service_waiting_patient(list: list): 
          """
@@ -497,12 +497,15 @@ def main():
           if len(workup_queue_lists["1"]) != 0:
             print("here3")
             service_waiting_patient(workup_queue_lists["1"])
+            number_workup_queue -= 1
           elif len(workup_queue_lists["2"]) != 0:
               print("here4")
               service_waiting_patient(workup_queue_lists["2"])
+              number_workup_queue -= 1
           elif len(workup_queue_lists["3,4,5"]) != 0:
               print("here5")
               service_waiting_patient(workup_queue_lists["3,4,5"])
+              number_workup_queue -= 1
       
       if event.patient.triage_type in {3, 4, 5}:
          r = random()
@@ -549,6 +552,42 @@ def main():
       # Free up one bed from the zone of the departing patient
       total_patients["out"] += 1
       number_of_beds_per_zone[event.patient.zone] += 1
+
+      def give_queued_patient_bed(patient, zone, triage_type):
+         global number_workup_queue
+
+         patient.assign_bed_in_zone(zone)
+         if status_workup_doctors == max_num_servers["doctors"]:
+            number_workup_queue += 1
+            workup_queue_lists[triage_type].append(patient)
+         else:
+            workup_service_time = generate_workup_service_time(patient=patient)
+            fel.append(DepartureWorkupEvent(patient=patient, time=clock+workup_service_time))
+         
+      zone = event.patient.zone
+      if zone in {3,4}:
+          if len(bed_queue_lists["2"]) > 0:
+              patient = bed_queue_lists["2"].pop()
+              give_queued_patient_bed(patient, zone, "2")
+
+          elif len(bed_queue_lists["3,4,5"]) > 0:
+            patient = bed_queue_lists["3,4,5"].pop()
+            give_queued_patient_bed(patient, zone, "3,4,5")
+
+      elif zone in {2}:
+          if len(bed_queue_lists["1"]) > 0:
+            patient = bed_queue_lists["1"].pop()
+            give_queued_patient_bed(patient, zone, "1")
+
+          elif len(bed_queue_lists["2"]) > 0:
+            patient = bed_queue_lists["2"].pop()
+            give_queued_patient_bed(patient, zone, "2")
+
+      else:
+         if len(bed_queue_lists["1"]) > 0:
+            patient = bed_queue_lists["1"].pop()
+            give_queued_patient_bed(patient, zone, "1")
+
       update_simulation_statistics(event)
       return
 
@@ -619,6 +658,11 @@ def main():
        'Workup': sum(server_uptime['Workup']),
        'Specialist': sum(server_uptime['Specialist'])
    }
+   print("\n\n\n")
+   print(sum(server_uptime['Workup']))
+   print(max_num_servers['doctors'])
+   print(clock)
+   print("\n\n\n")
 
    # Divide by two for utilization, since two servers?
    server_utilization_rate = {
