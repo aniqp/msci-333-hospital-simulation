@@ -174,6 +174,7 @@ def main():
    global interrupt_lists
    global bed_queue_lists
    global workup_queue_lists
+   global triage_queue_list
    global specialist_queue_list
    global time_weighted_queue
    global server_uptime
@@ -186,8 +187,8 @@ def main():
    # Set number of servers available for each process
    max_num_servers = {
        "doctors":2,
-       "nurses":2,
-       "specialists":2,
+       "nurses":1,
+       "specialists":1,
    }
    # Set number of beds available per zone
    number_of_beds_per_zone = {
@@ -225,6 +226,8 @@ def main():
       "2": [],
       "3,4,5": []
    }
+   #List of the patients in the triage queue
+   triage_queue_list = []
    # List of patients waiting to see specialist
    specialist_queue_list = []
 
@@ -265,6 +268,7 @@ def main():
       global number_workup_queue
 
       number_of_beds_per_zone[zone] -= 1 # Decrease number of available beds
+      patient.assign_bed_in_zone(zone)
       if status_workup_doctors == max_num_servers["doctors"]: # Check for available doctors
          number_workup_queue += 1
          workup_queue_lists["3,4,5"].append(patient)
@@ -301,6 +305,7 @@ def main():
          global status_workup_doctors
 
          number_of_beds_per_zone[zone] -= 1
+         patient.assign_bed_in_zone(zone)
          workup_service_time = generate_workup_service_time(patient)
          if status_workup_doctors == max_num_servers["doctors"]:
             # If all doctors are busy, attempt to interrupt lower priority patient
@@ -377,13 +382,14 @@ def main():
                  bed_queue_lists["1"].append(patient)
 
       else: # Walk-in patient arrives, patient goes to triage firs
+          patient = Patient(arrival_type=1)
           if status_triage_nurses == max_num_servers["nurses"]:
               number_triage_queue += 1
+              triage_queue_list.append(patient)
           else:
               status_triage_nurses += 1
-              triage_type = generate_walk_in_triage_type()
-              patient = Patient(arrival_type=1, triage_type=triage_type)
-              triage_time = generate_triage_time(patient)              
+              patient.assign_triage_type(triage_type=generate_walk_in_triage_type())
+              triage_time = generate_triage_time(patient) 
               fel.append(DepartureTriageEvent(patient=patient, time=clock+triage_time))
 
       total_patients["in"] += 1       
@@ -397,15 +403,26 @@ def main():
       queue waiting for bed.
       """
       global number_waiting_for_bed_queue
+      global number_triage_queue
+      global status_triage_nurses
       
+      status_triage_nurses -= 1
       if number_of_beds_per_zone[4] > 0:
           assign_type_3_4_5_patient_to_zone(event.patient, 4)
       elif number_of_beds_per_zone[3] > 0:
           assign_type_3_4_5_patient_to_zone(event.patient, 3)
       else:
           number_waiting_for_bed_queue += 1
-          bed_queue_lists["3,4,5"].append(event.patient)
+          number_of_beds_per_zone["3,4,5"].append(event.patient)
       
+      if len(triage_queue_list) != 0:
+          patient = triage_queue_list.pop(0)
+          number_triage_queue -= 1
+          status_triage_nurses += 1
+          patient.assign_triage_type(triage_type = generate_walk_in_triage_type())
+          triage_time = generate_triage_time(patient)  
+          fel.append(DepartureTriageEvent(patient=patient, time=clock+triage_time))
+
       update_simulation_statistics(event)
       return
 
@@ -420,6 +437,7 @@ def main():
       A random distribution will be used to determine if a patients of triage type 3, 4, or 5 
       will be sent to a specialist assessment; otherwise, they will leave the ED system.
       """
+      global status_workup_doctors
       ############################# WORKUP DEPARTURE EVENT HELPER METHODS ################################
       def service_waiting_patient(list): 
          """
@@ -447,14 +465,16 @@ def main():
          else:
              status_specialists += 1
              specialist_service_time = generate_specialist_time()
-             fel.append(DepartureSpecialistEvent(patient = patient, time = clock + specialist_service_time)  )
+             fel.append(DepartureSpecialistEvent(patient = patient, time = clock + specialist_service_time))
+         return
       ###################################################################################################
-
-      # First check for any interrupted patients and generature departure event if applicable
+     
+      status_workup_doctors -= 1
+      # Check for any interrupted patients and generature departure event if applicable
       if len(interrupt_lists["2"]) != 0:
          service_waiting_patient(interrupt_lists["2"])
       elif len(interrupt_lists["3,4,5"]) != 0:
-         service_waiting_patient("3,4,5")         
+         service_waiting_patient("3,4,5")  
 
       # If there is a doctor still idle, check for queued patient and generate departure event if applicable
       if status_workup_doctors < max_num_servers["doctors"]:
@@ -473,6 +493,7 @@ def main():
              # Patient does not need specialist assessment and can depart from ED
              # Free up one bed from the zone of the departing patient
              total_patients["out"] += 1
+             print(event)
              number_of_beds_per_zone[event.patient.zone] += 1
       else:
             # Patients of type 1 and 2 automatically go to specialist 
@@ -533,22 +554,29 @@ def main():
        
        return
    
-   while clock <= 2000:
-      event = fel.pop(0)
-      prev_event_time = clock
-      clock = event.time
-      
-      if event.type == 0: # Arrival
-          handle_arrival_event()
-      elif event.type == 1: # Departure from Triage
-          handle_triage_departure(event)
-      elif event.type == 2: # Departure from Initial Workup Assessment
-          handle_workup_departure(event)
-      else: # Departure from Specialist Assessment (i.e. Departure from ED)
-          handle_specialist_departure(event)
-      
-      fel.sort(key=lambda x: x.time, reverse = False)
-      print(f'Clock: {clock}')
+   with open("results.txt", "w") as file:
+      while clock <= 2000:
+         event = fel.pop(0)
+         prev_event_time = clock
+         clock = event.time
+         
+         if event.type == 0: # Arrival
+            handle_arrival_event()
+            type="Arrival"
+         elif event.type == 1: # Departure from Triage
+            handle_triage_departure(event)
+            type="Triage"
+         elif event.type == 2: # Departure from Initial Workup Assessment
+            handle_workup_departure(event)
+            type="Workup"
+         else: # Departure from Specialist Assessment (i.e. Departure from ED)
+            handle_specialist_departure(event)
+            type="Specialist"
+         
+         fel.sort(key=lambda x: x.time, reverse = False)
+         print(f'Clock: {clock}')
+         results = f"{type}, {number_waiting_for_bed_queue}, {number_triage_queue}, {number_workup_queue}, {number_specialist_queue}\n"
+         file.write(results)
 
    time_weighted_average_queues = {
       "Triage": sum(time_weighted_queue['Triage'])/clock,
