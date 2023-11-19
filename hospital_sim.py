@@ -99,11 +99,11 @@ def generate_workup_service_time(patient):
    """
    r = random()
    workup_service_time_mapping = {
-        1: 0.9,
-        2: 1.7,
+        1: 4.1,
+        2: 3.3,
         3: 2.5,
-        4: 3.3,
-        5: 4.1
+        4: 1.7,
+        5: 0.9
     }
    return (math.log(1 - r) / workup_service_time_mapping[patient.triage_type]) * -1 * 60
 
