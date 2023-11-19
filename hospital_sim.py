@@ -193,7 +193,7 @@ def emergency_department_simulation(simulation_time):
    }
    # Set number of beds available per zone
    number_of_beds_per_zone = {
-      1 : 4,
+      1 : 14,
       2 : 4, 
       3 : 6, 
       4 : 12, 
