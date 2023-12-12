@@ -1,4 +1,5 @@
-from random import seed, random
+from random import random
+import numpy as np
 import math
 
 class Patient():
@@ -6,10 +7,11 @@ class Patient():
       Object used to represent a patient. Each patient gets assigned differentiating attributes
       such as their arrival type, their triage status (1-5), and to a location in the ED.
     """
-    def __init__(self, arrival_type=None, triage_type = None, zone=None):
+    def __init__(self, arrival_type=None, triage_type = None, zone=None, complaint=None):
         self.arrival_type = arrival_type
         self.triage_type = triage_type
         self.zone = zone
+        self.complaint = complaint
     
     def assign_patient_arrival_type(self, arrival_type):
         types = {
@@ -20,6 +22,14 @@ class Patient():
 
     def assign_triage_type(self, triage_type):
         self.triage_type = triage_type
+        if triage_type in {1,2,4}:
+            r = random()
+            if r <= 0.5:
+                self.complaint = 1 # 1 - Trauma, 2 - Stoke, 4 - Laceration
+            else:
+                self.complaint = 2 # 1 - Cardiac, 2 - Severe Asthma, 4 - Mild Asthma
+        else:
+            self.complaint = 1 # 3 - Broken Limb, 5 - Common Cold
 
     def assign_bed_in_zone(self, zone):
         self.zone = zone
@@ -46,86 +56,168 @@ class Event():
 
     def __str__(self):
        types = {
-           0: "Arrival",
-           1: "Departure from Triage",
-           2: "Departure from Initial Workup",
-           3: "Departure from Specialist Assessment"
+           0: "Ambulance Hospital Arrival",
+           1: "Walk-in Arrival",
+         #   2: "Ambulance Home Arrival",
+           3: "Ambulance Hospital Departure",
+           4: "Departure from Triage",
+           5: "Departure from Initial Workup",
+           6: "Departure from Specialist Assessment",
        }
-       return f"Event Type: {types[self.type]}"
- 
-class ArrivalEvent(Event):
+       return f"Event Type: {types[self.type]}"   
+         
+class AmbulanceHospitalArrivalEvent(Event):
+    def __init__(self, time=None, patient=None, diverted_ambulance=False):
+        super().__init__(type=1, patient=patient, time=time)
+        self.diverted_ambulance = diverted_ambulance
+    
+    def divert_ambulance(self):
+        self.diverted_ambulance = True
+
+class WalkInArrivalEvent(Event):
     def __init__(self, time=None, patient=None):
-        super().__init__(type=0, patient=patient, time=time)    
+        super().__init__(type=0, patient=patient, time=time)  
+
+class AmbulanceHomeArrivalEvent(Event):
+    def __init__(self, time=None, patient=None):
+        super().__init__(type=2, patient=patient, time=time)  
+
+class DepartureAmbulanceEvent(Event):
+    def __init__(self, time=None, patient=None):
+        super().__init__(type=3, patient=patient, time=time)    
 
 class DepartureTriageEvent(Event):
     def __init__(self, patient=None, time=None):
-        super().__init__(type=1, patient=patient, time=time)
+        super().__init__(type=4, patient=patient, time=time)
 
 class DepartureWorkupEvent(Event):
     def __init__(self, patient=None, time=None):
-        super().__init__(type=2, patient=patient, time=time)
+        super().__init__(type=5, patient=patient, time=time)
 
 class DepartureSpecialistEvent(Event):
     def __init__(self, patient=None, time=None):
-        super().__init__(type=3, patient=patient, time=time)
+        super().__init__(type=6, patient=patient, time=time)
 
 class EndSimulationEvent(Event):
-    def __init__(self, time=10000):
+    def __init__(self, time=None):
         super().__init__(type="End Simulation", time=time)
 
-def generate_interarrival_time():
+def generate_interarrival_time(clock, arrival_type):
       """
-      Generates interarrival time using lambda value of 4.5 patients / hour, 
+      Generates interarrival time using lambda value of a patients / hour, 
       or 4.5/60 patients / minute.
       """
       r = random()
-      return (math.log(1 - r)/(4.5/60)) * -1
+      a = 0
+      # total_hours = clock / 60
+      # whole_hours = math.floor(total_hours)
+
+      hours = clock % (24 * 60) / 60
+
+      if ((hours >= 0 and hours <= 7) or hours == 23):
+          a = 6 if arrival_type == 1 else 14
+      elif (hours >= 7 and hours <= 11):
+          a = 9 if arrival_type == 1 else 10
+      elif (hours >= 12 and hours <= 17):
+          a = 15 if arrival_type == 1 else 10
+      else:
+          a = 18 if arrival_type == 1 else 12
+
+      # import pdb;pdb.set_trace()
+      return (math.log(1 - r)/(a/60)) * -1
 
 def generate_triage_time(patient):
    """
    Generates service time for triage assessment (only for walk-in patients)
    """
-   r = random()
-   triage_time_mapping = {3: 1.5, 4: 13, 5: 13}
-   return (math.log(1 - r)/(1/triage_time_mapping[patient.triage_type])) * -1
+   if (patient.triage_type == 3):
+      return np.random.uniform(0.75, 2.25) # More urgent triaging for type 3
+   return np.random.uniform(7.5, 11.25)
    
 def generate_workup_service_time(patient):
-   """
-   Generates service time for intiial workup assessment. The service time (in hours) is
-   divided into bins: [0.5, 1.3], [1.3, 2.1], [2.1, 2.9], [2.9, 3.7], [3.7, 4.5] for patients
-   type 1 through 5.
+   if (patient.triage_type == 1):
+       if (patient.complaint == 1):
+           return np.random.uniform(5, 12)
+       else:
+           return np.random.uniform(2, 5)
+   elif (patient.triage_type == 2):
+       if (patient.complaint == 1):
+             return np.random.uniform(5, 15)
+       else:
+           return 2
+   elif (patient.triage_type == 3):
+       return np.random.uniform(5, 10)
+   elif (patient.triage_type == 4):
+       return 2
+   else:
+       return np.random.uniform(5, 10)
 
-   Mean workup times (in hours): 0.9, 1.7, 2.5, 3.3, 4.1
-   """
-   r = random()
-   workup_service_time_mapping = {
-        1: 4.1,
-        2: 3.3,
-        3: 2.5,
-        4: 1.7,
-        5: 0.9
-    }
-   return (math.log(1 - r) / workup_service_time_mapping[patient.triage_type]) * -1 * 60
-
-def generate_specialist_time():
+def generate_procedure_time(patient):
    """
    Generates service time for specialist assessment. 20% of patients will
    also require testing which adds onto the service time.
    """
-   r = random()
-   specialist_time = (math.log(1 - r)/(2.5)) * -1 * 60
-   r_test = random()
-   if r_test <= 0.2:
-      return specialist_time + generate_test_time() 
-   return specialist_time
+   procedure_times = {
+       1 : np.random.uniform(3, 5), # X-ray
+       2: np.random.triangular(10, 25, 50, 1)[0], # Surgery Type A
+       3: np.random.triangular(30, 45, 90, 1)[0], # Surgery Type B
+       4: np.random.uniform(7, 10), # ECG
+       5: np.random.uniform(10, 25), # CT Scan
+       6: np.random.uniform(2, 5), # Medication
+       7: np.random.uniform(5, 10), # Oxygen Therapy
+       8: np.random.uniform(2, 3), # Nebulizer
+       9: np.random.uniform(5, 15), # Cast/Splint
+       10: np.random.triangular(10, 15, 25, 1)[0], # Stitches
+       11: np.random.uniform(2, 5), # Tetanus Shot
+   }
 
-def generate_test_time():
-   """
-   Generates services time for running and obtaining test results.
-   Uniformaly distributed between 20 and 60 minutes.
-   """
-   r = random()
-   return 20 + r * (60-20)
+   total_time = 0
+   r1 = random()
+   r2 = random()
+
+   if (patient.triage_type == 1):
+       if (patient.complaint == 1):
+           if r1 <= 0.9:
+               total_time += procedure_times.get(1)
+           if r2 <= 0.8:
+               total_time += procedure_times.get(2)
+       else:
+            if r1 <= 0.95:
+                total_time += procedure_times.get(4)
+            if r2 <= 0.6:
+                total_time += procedure_times.get(3)
+   elif (patient.triage_type == 2):
+       if (patient.complaint == 1):
+           if r1 <= 0.9:
+               total_time += procedure_times.get(5)
+           if r2 <= 0.8:
+               total_time += procedure_times.get(6)
+       else:
+           if r1 <= 0.9:
+               total_time += procedure_times.get(7)
+           if r2 <= 0.7:
+               total_time += procedure_times.get(8)
+   elif (patient.triage_type == 3):
+       if r1 <= 0.8:
+           total_time += procedure_times.get(1)
+       if r2 <= 0.7:
+           total_time += procedure_times.get(9)
+   elif (patient.triage_type == 4):
+       if (patient.complaint == 1):
+            if r1 <= 0.75:
+               total_time += procedure_times.get(10)
+            if r2 <= 0.3:
+               total_time += procedure_times.get(11)
+       else: 
+            if r1 <= 0.6:
+               total_time += procedure_times.get(8)
+            if r2 <= 0.3:
+               total_time += procedure_times.get(7)
+   else:
+       if r1 <= 0.9:
+           total_time += procedure_times.get(6)
+   # import pdb; pdb.set_trace()
+   return total_time
 
 def generate_ambulance_arrival_triage_type():
    """
@@ -135,9 +227,9 @@ def generate_ambulance_arrival_triage_type():
    r = random()
    if r <= 0.2:
       triage_type = 1
-   elif r <= 0.5:
+   elif r <= 0.55:
       triage_type = 2
-   elif r <= 0.85:
+   elif r <= 85:
       triage_type = 3
    else:
       triage_type = 4
@@ -179,24 +271,40 @@ def emergency_department_simulation(simulation_time):
    global time_weighted_queue
    global server_uptime
    global total_interrupts
+   global available_ambulances
+   global diverted_ambulances
+   global beds_in_use
+   global total_beds
+   global time_in_diversion
+
+   available_ambulances = 10
+   diverted_ambulances = 0
+
+   beds_in_use = 0
+   total_beds = 36
 
    clock = 0
    
    # FEL starts off with an arrival at t = 0
-   fel = [ArrivalEvent(time=0)]
+   initial_ambulance_patient = Patient(arrival_type=0)
+   initial_walkin_patient = Patient(arrival_type=1)
+   available_ambulances -= 1
+   fel = [DepartureAmbulanceEvent(time=0, patient=initial_ambulance_patient), 
+          WalkInArrivalEvent(time=0, patient=initial_walkin_patient)]
+
 
    # Set number of servers available for each process
    max_num_servers = {
        "doctors":2,
-       "nurses":1,
-       "specialists":1,
+       "nurses":2,
+       "specialists":5,
    }
    # Set number of beds available per zone
    number_of_beds_per_zone = {
-      1 : 14,
-      2 : 4, 
-      3 : 6, 
-      4 : 12, 
+      1 : 12,
+      2 : 8, 
+      3 : 10, 
+      4 : 10, 
    }
 
    # State Variables - Resource Statuses
@@ -260,6 +368,8 @@ def emergency_department_simulation(simulation_time):
        "Workup": [],
        "Specialist": [],
    }
+
+   time_in_diversion = []
    ##################################################
    def check_bed_queue(zone, patient):
       """
@@ -272,8 +382,10 @@ def emergency_department_simulation(simulation_time):
       """
       def give_bed_queued_patient(triage_type):
          global number_workup_queue
+         global beds_in_use
 
          patient.assign_bed_in_zone(zone)
+         beds_in_use += 1
          if status_workup_doctors == max_num_servers["doctors"]:
             number_workup_queue += 1
             workup_queue_lists[triage_type].append(patient)
@@ -316,8 +428,10 @@ def emergency_department_simulation(simulation_time):
       """
       global status_workup_doctors
       global number_workup_queue
+      global beds_in_use
 
       number_of_beds_per_zone[zone] -= 1 # Decrease number of available beds
+      beds_in_use += 1
       patient.assign_bed_in_zone(zone)
       if status_workup_doctors == max_num_servers["doctors"]: # Check for available doctors
          number_workup_queue += 1
@@ -329,7 +443,7 @@ def emergency_department_simulation(simulation_time):
          fel.append(DepartureWorkupEvent(patient=patient, time=clock + workup_service_time))   
       return
 
-   def handle_arrival_event():
+   def handle_arrival_event(event):
       """
          Method used to handles patient arrival events. Handling varies depending on arrival type 
          (ambulance or walk-in). Triage type (1-5) is pre-determined for ambulance arrivals and walk-in 
@@ -343,6 +457,8 @@ def emergency_department_simulation(simulation_time):
       global status_triage_nurses
       global number_triage_queue
       global number_waiting_for_bed_queue
+      global available_ambulances
+      global diverted_ambulances
 
       ################################## ARRIVAL EVENT HELPER METHODS ################################
       
@@ -354,8 +470,10 @@ def emergency_department_simulation(simulation_time):
          """
          global status_workup_doctors
          global total_interrupts
+         global beds_in_use
 
          number_of_beds_per_zone[zone] -= 1
+         beds_in_use += 1
          patient.assign_bed_in_zone(zone)
          workup_service_time = generate_workup_service_time(patient)
          if status_workup_doctors == max_num_servers["doctors"]:
@@ -402,44 +520,51 @@ def emergency_department_simulation(simulation_time):
       ###################################################################################################
 
       # Generate next arrival event
-      a = generate_interarrival_time()
-      fel.append(ArrivalEvent(time=clock + a))
+      arrival_type = event.patient.arrival_type
+      
+      a = generate_interarrival_time(clock, arrival_type)
 
-      r = random()
-      if r <= 0.5: # Patient arrived by ambulance
-         triage_type = generate_ambulance_arrival_triage_type()
-         patient = Patient(arrival_type=0, triage_type=triage_type)
+      if arrival_type == 0: # Ambulance arrival
+         available_ambulances += 1
+         if (event.diverted_ambulance):
+            diverted_ambulances -= 1
+            update_simulation_statistics(event)
+            return
+      else:
+          fel.append(WalkInArrivalEvent(time=clock + a, patient=Patient(arrival_type=arrival_type)))
+
+      patient = event.patient
+      if (arrival_type == 0):
          if patient.triage_type == 3 or patient.triage_type == 4:
-               if number_of_beds_per_zone[3] > 0:
-                  assign_type_3_4_5_patient_to_zone(patient, 3)
-               elif number_of_beds_per_zone[4] > 0:
-                  assign_type_3_4_5_patient_to_zone(patient, 4)
-               else:
-                  number_waiting_for_bed_queue += 1
-                  bed_queue_lists["3,4,5"].append(patient)
+            if number_of_beds_per_zone[3] > 0:
+               assign_type_3_4_5_patient_to_zone(patient, 3)
+            elif number_of_beds_per_zone[4] > 0:
+               assign_type_3_4_5_patient_to_zone(patient, 4)
+            else:
+               number_waiting_for_bed_queue += 1
+               bed_queue_lists["3,4,5"].append(patient)
 
          elif patient.triage_type == 2:
-              if number_of_beds_per_zone[2] > 0:
+               if number_of_beds_per_zone[2] > 0:
                   assign_type_1_2_patient_to_zone(patient, 2)
-              elif number_of_beds_per_zone[3] > 0:
+               elif number_of_beds_per_zone[3] > 0:
                   assign_type_1_2_patient_to_zone(patient, 3)
-              elif number_of_beds_per_zone[4] > 0:
+               elif number_of_beds_per_zone[4] > 0:
                   assign_type_1_2_patient_to_zone(patient, 4)
-              else:
+               else:
                   number_waiting_for_bed_queue += 1
                   bed_queue_lists["2"].append(patient)
 
          else: # Patient type 1
-             if number_of_beds_per_zone[1] > 0:
-                 assign_type_1_2_patient_to_zone(patient, 1)
-             elif number_of_beds_per_zone[2] > 0:
-                 assign_type_1_2_patient_to_zone(patient, 2)
-             else:
-                 number_waiting_for_bed_queue += 1
-                 bed_queue_lists["1"].append(patient)
+               if number_of_beds_per_zone[1] > 0:
+                  assign_type_1_2_patient_to_zone(patient, 1)
+               elif number_of_beds_per_zone[2] > 0:
+                  assign_type_1_2_patient_to_zone(patient, 2)
+               else:
+                  number_waiting_for_bed_queue += 1
+                  bed_queue_lists["1"].append(patient)
 
       else: # Walk-in patient arrives, patient goes to triage first
-          patient = Patient(arrival_type=1)
           if status_triage_nurses == max_num_servers["nurses"]:
               number_triage_queue += 1
               triage_queue_list.append(patient)
@@ -452,6 +577,33 @@ def emergency_department_simulation(simulation_time):
       total_patients["in"] += 1       
       update_simulation_statistics(event)
       return
+
+   def handle_ambulance_departure_event(event: DepartureAmbulanceEvent):
+       """
+       """
+       global available_ambulances
+       global diverted_ambulances
+
+       a = generate_interarrival_time(clock, 0)
+       fel.append(DepartureAmbulanceEvent(time=clock + a, patient=Patient(arrival_type=0)))
+
+
+       travel_time = np.random.triangular(5, 10, 20, 1)[0]
+       process_time = np.random.uniform(4, 10)
+       triage_type = generate_ambulance_arrival_triage_type()
+
+       event.patient.assign_triage_type(triage_type=triage_type)
+       if (available_ambulances > 0):
+            available_ambulances -= 1
+            if ((triage_type in {1,2}) or (number_waiting_for_bed_queue < 5 and triage_type in {3,4})):
+               fel.append(AmbulanceHospitalArrivalEvent(time=clock + travel_time*2 + process_time, patient=event.patient))
+            else:
+            # import pdb;pdb.set_trace()
+               diverted_ambulances += 1
+               diverted_travel_time = np.random.triangular(10, 15, 25, 1)[0]
+               fel.append(AmbulanceHospitalArrivalEvent(time=clock+travel_time+process_time+diverted_travel_time, patient=event.patient, diverted_ambulance=True))
+       update_simulation_statistics(event)
+       return
 
    def handle_triage_departure(event: DepartureTriageEvent):
       """
@@ -521,7 +673,7 @@ def emergency_department_simulation(simulation_time):
              specialist_queue_list.append(patient)
          else:
              status_specialists += 1
-             specialist_service_time = generate_specialist_time()
+             specialist_service_time = generate_procedure_time(patient)
              fel.append(DepartureSpecialistEvent(patient = patient, time = clock + specialist_service_time))
          return
       ###################################################################################################
@@ -546,20 +698,7 @@ def emergency_department_simulation(simulation_time):
             service_waiting_patient(workup_queue_lists["3,4,5"])
             number_workup_queue -= 1
       
-      if event.patient.triage_type in {3, 4, 5}:
-         r = random()
-         if r <= 0.3:
-            handle_specialist_event(event.patient)
-         else:
-             # Patient does not need specialist assessment and can depart from ED
-             # Free up one bed from the zone of the departing patient
-             total_patients["out"] += 1
-             number_of_beds_per_zone[event.patient.zone] += 1
-             check_bed_queue(event.patient.zone, event.patient)
-      else:
-            # Patients of type 1 and 2 automatically go to specialist 
-            
-            handle_specialist_event(event.patient)
+      handle_specialist_event(event.patient)
 
       update_simulation_statistics(event)
       return
@@ -575,6 +714,7 @@ def emergency_department_simulation(simulation_time):
       """
       global status_specialists
       global number_specialist_queue
+      global beds_in_use
       
       status_specialists -= 1
       # Check to see if there is a patient in the specialist queue
@@ -582,7 +722,7 @@ def emergency_department_simulation(simulation_time):
           status_specialists += 1
           number_specialist_queue -= 1
           queued_patient = specialist_queue_list.pop(0)
-          specialist_service_time = generate_specialist_time()
+          specialist_service_time = generate_procedure_time(event.patient)
           
           # Generate a departure event for the queued patient
           fel.append(DepartureSpecialistEvent(patient = queued_patient, time = clock + specialist_service_time))
@@ -590,6 +730,7 @@ def emergency_department_simulation(simulation_time):
       # Free up one bed from the zone of the departing patient
       total_patients["out"] += 1
       number_of_beds_per_zone[event.patient.zone] += 1
+      beds_in_use -= 1
 
       check_bed_queue(event.patient.zone, event.patient)
 
@@ -606,6 +747,9 @@ def emergency_department_simulation(simulation_time):
        time_weighted_queue["Bed"].append(delta_t * number_waiting_for_bed_queue)
        time_weighted_queue["Workup"].append(delta_t * number_workup_queue)
        time_weighted_queue["Specialist"].append(delta_t * number_specialist_queue)
+
+       # Diverted Ambulance
+       time_in_diversion.append(delta_t * diverted_ambulances)
        
        # Maximum queue length
        max_queue_lengths["Triage"] = max(max_queue_lengths["Triage"], number_triage_queue)
@@ -617,29 +761,39 @@ def emergency_department_simulation(simulation_time):
        server_uptime["Triage"].append(delta_t * status_triage_nurses)
        server_uptime["Workup"].append(delta_t * status_workup_doctors)
        server_uptime["Specialist"].append(delta_t * status_specialists)
-       
+   
        return
 
+   count = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0, 6:0}
    while clock <= simulation_time:
       event = fel.pop(0)
       prev_event_time = clock
       clock = event.time
       
-      if event.type == 0: # Arrival
-         handle_arrival_event()
-         type="Arrival"
-      elif event.type == 1: # Departure from Triage
+      count[event.type] += 1
+      
+      print(clock, event.type)
+      if event.type == 0 or event.type == 1: # Walk In or Ambulance Arrival
+         handle_arrival_event(event)
+      elif event.type == 3: # Ambulance Hospital Departure
+          handle_ambulance_departure_event(event)
+      elif event.type == 4: # Departure from Triage
          handle_triage_departure(event)
-         type="Triage"
-      elif event.type == 2: # Departure from Initial Workup Assessment
+      elif event.type == 5: # Departure from Initial Workup Assessment
          handle_workup_departure(event)
-         type="Workup"
       else: # Departure from Specialist Assessment (i.e. Departure from ED)
          handle_specialist_departure(event)
-         type="Specialist"
       
       fel.sort(key=lambda x: x.time, reverse = False)
-
+   
+   print("\nwalk in arrival: ", count[0])
+   print("ambulance arrival to hospital: ", count[1])
+   print("ambulance departure from hospital: ", count[3])
+   print("departure from triage : ", count[4])
+   print("departure from initial workup: ", count[5])
+   print("departure from specialist: ", count[6])
+   print("diverted ambulances: ", diverted_ambulances)
+   print("\n")
    # End of Simulation - Statistic Calculations
    time_weighted_average_queues = {
       "Triage": sum(time_weighted_queue['Triage'])/clock,
@@ -670,9 +824,12 @@ def emergency_department_simulation(simulation_time):
    server_idle_rate = {
        'Triage': (1 - (sum(server_uptime['Triage'])/(max_num_servers['nurses'] * clock))) * 100,
        'Workup': (1 - (sum(server_uptime['Workup'])/(max_num_servers['doctors'] * clock))) * 100,
-       'Specialist': (1 - (sum(server_uptime['Specialist'])/(max_num_servers['doctors'] * clock))) * 100
+       'Specialist': (1 - (sum(server_uptime['Specialist'])/(max_num_servers['specialists'] * clock))) * 100
    }
-   
+
+   time_percentage_of_ambulances_in_diversion = sum(time_in_diversion)/(10 * clock) * 100
+   print(time_percentage_of_ambulances_in_diversion)
+
    return {'Time Weighted Average Queues':time_weighted_average_queues, 
            'Average Queue Time Per Customer': average_queue_time_per_customer, 
            'Max Queue Lengths': max_queue_lengths,
@@ -681,8 +838,8 @@ def emergency_department_simulation(simulation_time):
            'Server Idle Rate': server_idle_rate}
 
 def main():
-   number_of_replications = 100
-   simulation_time = 8*60
+   number_of_replications = 1
+   simulation_time = 24 * 60 * 7
    accumulated_results = []
 
    for i in range(number_of_replications):
